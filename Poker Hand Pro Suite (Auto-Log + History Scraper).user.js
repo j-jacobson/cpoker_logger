@@ -13,7 +13,7 @@
 
     // --- CONFIGURATION ---
     // REPLACE THIS with your exact username on the site
-    const MY_USERNAME = "Guest10388"; 
+    const MY_USERNAME = "Guest10388";
     // ---------------------
 
     const HAND_STORAGE = new Map(); // Stores hands by ID to prevent duplicates
@@ -23,7 +23,7 @@
         const rawText = container.innerText;
         // HERO FILTER: Skip hand if "Dealt" line is missing
         if (!rawText.includes("Dealt")) return null;
-        
+
         const idMatch = rawText.match(/Hand #(\d+)/);
         if (!idMatch) return null;
         const handId = idMatch[1];
@@ -34,33 +34,47 @@
         let dateMatch = rawText.match(/Played at ([\d\-T:Z\.]+)/);
         let dateStr = dateMatch ? dateMatch[1] : new Date().toISOString();
         let cleanText = `PokerStars Hand #${handId}: Hold'em No Limit (1/2 USD) - ${dateStr}\n`;
-        
+
         let heroLine = "";
         let bodyText = "";
         let boardCards = []; // We will use an array to store the full board
 
         let totalCalculatedPot = 0;
-        
-        const lines = container.querySelectorAll('.log-el');
-        
-        lines.forEach(el => {
-            let line = el.innerText.replace(/\[B\]\s?/g, '').trim(); 
 
-            if (line.includes("CPokers Hand") || line.includes("Button is in") || line.includes("Log Version")) return;
+        const lines = container.querySelectorAll('.log-el');
+
+        lines.forEach(el => {
+            let line = el.innerText.replace(/\[B\]\s?/g, '').trim();
+
+            // Detect metadata lines that are often "smashed" together
+            if (line.includes("CPokers Hand") || line.includes("Button is in") || line.includes("Log Version")) {
+                // 1. Force newlines before key markers to split the "blob"
+                let fixedLine = line.replace(/(Button is in Seat \d+)/g, '\n$1\n')
+                                    .replace(/(Seat \d+:)/g, '\n$1');
+
+                // 2. Split by the newlines we just created, trim them, and push them to your lines array
+                line = ""
+                fixedLine.split('\n').forEach(subLine => {
+                   if (!subLine.includes("Log Version") && !subLine.includes("Ruler is")) {
+                      // This pushes the metadata back into your processing flow
+                      line += subLine + "\n"
+                    }
+                });
+            }
 
             if (line.startsWith("Dealt")) {
                 let cards = line.replace("Dealt", "").replace("Preflop", "")
                                 .replace(/♠/g, 's ').replace(/♥/g, 'h ').replace(/♦/g, 'd ').replace(/♣/g, 'c ')
                                 .trim();
-                heroLine = `Dealt to ${MY_USERNAME} [${cards}]\n`; 
-                return; 
+                heroLine = `Dealt to ${MY_USERNAME} [${cards}]\n`;
+                return;
             }
 
             if (line.includes('Flop:') || line.includes('Turn:') || line.includes('River:')) {
                 let parts = line.split(':');
                 let street = parts[0].toUpperCase();
                 let cardsRaw = parts[1].replace(/♠/g, 's ').replace(/♥/g, 'h ').replace(/♦/g, 'd ').replace(/♣/g, 'c ').trim();
-                
+
                 // Add these cards to our full board tracker
                 cardsRaw.split(' ').filter(c => c.length > 0).forEach(card => {
                     if (!boardCards.includes(card)) boardCards.push(card);
@@ -73,13 +87,13 @@
                        .replace('posts 2', 'posts big blind 2')
                        .replace('collects', 'won')
                        .replace('mucks', ' mucks')
-            
+
             // Track all winnings to build an accurate Total Pot
             if (line.includes("won") && line.includes("from")) {
                 let amountMatch = line.match(/won (\d+)/);
                 if (amountMatch) totalCalculatedPot += parseInt(amountMatch[1]);
             }
-            
+
             // FORMAT SHOWDOWN (Standardizes Guest10388:shows: A♥5♣)
             if (line.includes("shows")) {
                 let parts = line.split("shows");
@@ -89,7 +103,7 @@
                                        .trim();
                 line = `${name} shows [${cardsRaw}]`;
             }
-            
+
             if (line.startsWith("SummaryTotal") || line.startsWith("Board")) return;
 
             bodyText += line + "\n";
@@ -104,7 +118,7 @@
 
         return { id: handId, text: cleanText + heroLine + bodyText + summary + "\n\n" };
     }
-    
+
     // --- MODE 1: LIVE LISTENER ---
     // Checks the visible log every 2 seconds for new finished hands
     setInterval(() => {
@@ -125,7 +139,7 @@
         const backBtn = document.querySelector('.log-back');
         const endBtn = document.querySelector('.log-end');
         const inputField = document.querySelector('.log-input');
-        
+
         if (!backBtn) {
             alert("⚠️ Please open the 'Log' tab first so I can see the history buttons.");
             return;
@@ -152,9 +166,9 @@
 
             // 2. Check if we are at the start
             let currentIndex = inputField ? inputField.value : "0";
-            if (currentIndex === "1" || currentIndex === lastIndex) {
+            if (currentIndex === "0" || currentIndex === lastIndex) {
                 // Double check: sometimes the network is slow, give it a retry
-                if(noChangeCount > 3) break; 
+                if(noChangeCount > 3) break;
                 noChangeCount++;
             } else {
                 noChangeCount = 0;
@@ -164,9 +178,9 @@
             // 3. Click Back
             backBtn.click();
             updateButtonCount();
-            
+
             // 4. Wait a tiny bit for the new hand to load
-            await new Promise(r => setTimeout(r, 100)); 
+            await new Promise(r => setTimeout(r, 100));
         }
 
         btn.innerHTML = originalText;
@@ -183,7 +197,7 @@
             alert("No hands captured yet!");
             return;
         }
-        
+
         // Sort hands by ID so they are in order
         const sortedHands = Array.from(HAND_STORAGE.values()).sort((a, b) => {
              const idA = a.match(/Hand #(\d+)/)[1];
